@@ -53,6 +53,14 @@ func (tx *Tx) GetDirect(ctx context.Context, query string, params interface{}, d
 	return getDirect(ctx, tx, query, params, dist)
 }
 
+func (tx *Tx) GetJoined(ctx context.Context, query string, params interface{}, dist JoinedDist) error {
+	return getJoined(ctx, tx, query, params, dist)
+}
+
+func (tx *Tx) SelectJoined(ctx context.Context, query string, params interface{}, dist interface{}) error {
+	return selectJoined(ctx, tx, query, params, dist)
+}
+
 var _ Executor = (*Tx)(nil)
 
 func (tx *Tx) BeginTx(ctx context.Context, savepoint string) (*Tx, error) {

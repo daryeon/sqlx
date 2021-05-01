@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/zzztttkkk/sqlx/reflectx"
 	"reflect"
 )
 
@@ -120,4 +121,49 @@ func (rows *Rows) selectToValueSlice(sliceV reflect.Value, et reflect.Type) (*re
 		}
 	}
 	return &sliceV, rows.Err()
+}
+
+type JoinedDist interface {
+	JoinIndex(int) interface{}
+}
+
+func (rows *Rows) ScanJoined(dist JoinedDist) error {
+	v := reflect.ValueOf(dist).Elem()
+	t := v.Type()
+	if t.Kind() != reflect.Struct {
+		return ErrUnexpectedDistType
+	}
+
+	columns, err := rows.Columns()
+	if err != nil {
+		return err
+	}
+
+	dIdx := 0
+	var d interface{}
+	var dV reflect.Value
+	var dT *reflectx.StructMap
+	var dN int
+
+	var ptrs []interface{}
+	for _, c := range columns {
+		if dT == nil {
+			d = dist.JoinIndex(dIdx)
+			dV = reflect.ValueOf(d).Elem()
+			dT = mapper.TypeMap(reflect.TypeOf(d).Elem())
+			dN = len(dT.Names)
+		}
+		fi, ok := dT.Names[c]
+		if !ok {
+			return fmt.Errorf("sha.sqlx: bad column name `%s`", c)
+		}
+		f := dV.FieldByIndex(fi.Index)
+		ptrs = append(ptrs, f.Addr().Interface())
+		dN--
+		if dN == 0 {
+			dT = nil
+			dIdx++
+		}
+	}
+	return rows.Rows.Scan(ptrs...)
 }

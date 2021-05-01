@@ -61,6 +61,14 @@ func (db *DB) GetDirect(ctx context.Context, query string, params interface{}, d
 	return getDirect(ctx, db, query, params, dist)
 }
 
+func (db *DB) GetJoined(ctx context.Context, query string, params interface{}, dist JoinedDist) error {
+	return getJoined(ctx, db, query, params, dist)
+}
+
+func (db *DB) SelectJoined(ctx context.Context, query string, params interface{}, dist interface{}) error {
+	return selectJoined(ctx, db, query, params, dist)
+}
+
 func (db *DB) BeginTx(ctx context.Context, opt *sql.TxOptions) (*Tx, error) {
 	tx, err := db.std.BeginTx(ctx, opt)
 	if err != nil {

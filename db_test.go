@@ -11,7 +11,7 @@ import _ "github.com/lib/pq"
 var db *DB
 
 func init() {
-	db, _ = Open("postgres", "postgres://postgres:123456@127.0.0.1:5432/postgres")
+	db, _ = Open("postgres", "postgres://postgres:123456@127.0.0.1:5432/sha")
 	db.SetLogger(log.Default())
 }
 
@@ -90,4 +90,68 @@ func TestDB_Rows(t *testing.T) {
 		panic(err)
 	}
 	defer rows.Close()
+}
+
+type A struct {
+	Id   int64  `db:"id"`
+	Name string `db:"name"`
+}
+
+type B struct {
+	Id   int64  `db:"id"`
+	Name string `db:"name"`
+	AID  int64  `db:"aid"`
+	A    *A     `db:"-"`
+}
+
+func (b *B) JoinIndex(i int) interface{} {
+	switch i {
+	case 0:
+		return b
+	case 1:
+		ptr := &A{}
+		b.A = ptr
+		return ptr
+	default:
+		return nil
+	}
+}
+
+func TestDB_GetJoined(t *testing.T) {
+	var result B
+	err := db.GetJoined(
+		context.Background(),
+		"select * from b, a where b.aid=a.id and b.name=${name}", Params{"name": "b1"},
+		&result,
+	)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(result, result.A)
+}
+
+func TestDB_SelectJoined_Ptr(t *testing.T) {
+	var result []*B
+	err := db.SelectJoined(
+		context.Background(),
+		"select * from b, a where b.aid=a.id and b.name=${name}", Params{"name": "b1"},
+		&result,
+	)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(result[0])
+}
+
+func TestDB_SelectJoined_Value(t *testing.T) {
+	var result []B
+	err := db.SelectJoined(
+		context.Background(),
+		"select * from b, a where b.aid=a.id and b.name=${name}", Params{"name": "b1"},
+		&result,
+	)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(result[0])
 }
