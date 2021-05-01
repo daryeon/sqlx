@@ -161,7 +161,7 @@ tx.Execute(...)
 tx := db.MustBeginTx(context.Background(), nil)
 defer tx.AutoCommit()
 
-ntx := tx.MustBegin(context.Background(), "SavepointName")
+ntx := tx.MustBeginTx(context.Background(), "SavepointName")
 defer ntx.AutoCommit()
 ```
 
