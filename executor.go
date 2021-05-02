@@ -3,7 +3,6 @@ package sqlx
 import (
 	"context"
 	"database/sql"
-	"reflect"
 )
 
 type BasicExecutor interface {
@@ -22,9 +21,9 @@ type Executor interface {
 	// GetDirect fetch some specific columns of one row
 	GetDirect(ctx context.Context, query string, params interface{}, dist DirectDists) error
 	// GetJoined auto scan joined select
-	GetJoined(ctx context.Context, query string, params interface{}, dist JoinedDist) error
+	GetJoined(ctx context.Context, query string, params interface{}, dist interface{}, get JoinedGet) error
 	// SelectJoined auto scan joined select
-	SelectJoined(ctx context.Context, query string, params interface{}, ptrOfJoinedDistSlice interface{}) error
+	SelectJoined(ctx context.Context, query string, params interface{}, ptrOfJoinedDistSlice interface{}, get JoinedGet) error
 }
 
 func get(ctx context.Context, be BasicExecutor, query string, params interface{}, dist interface{}) error {
@@ -54,22 +53,20 @@ func getDirect(ctx context.Context, be BasicExecutor, query string, params inter
 	return rows.get(dist)
 }
 
-func getJoined(ctx context.Context, be BasicExecutor, query string, params interface{}, dist JoinedDist) error {
+func getJoined(ctx context.Context, be BasicExecutor, query string, params interface{}, dist interface{}, get JoinedGet) error {
 	rows, err := be.Rows(ctx, query, params)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
-	return rows.getJoined(dist)
+	return rows.getJoined(dist, get)
 }
 
-var joinedDistType = reflect.TypeOf((*JoinedDist)(nil)).Elem()
-
-func selectJoined(ctx context.Context, be BasicExecutor, query string, params interface{}, slicePtr interface{}) error {
+func selectJoined(ctx context.Context, be BasicExecutor, query string, params interface{}, slicePtr interface{}, joinedGet JoinedGet) error {
 	rows, err := be.Rows(ctx, query, params)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
-	return rows.selectJoined(slicePtr)
+	return rows.selectJoined(slicePtr, joinedGet)
 }

@@ -125,11 +125,9 @@ func (rows *Rows) selectToValueSlice(sliceV reflect.Value, et reflect.Type) (*re
 	return &sliceV, rows.Err()
 }
 
-type JoinedDist interface {
-	JoinIndex(idx int) interface{}
-}
+type JoinedGet func(raw interface{}, idx int) (interface{}, int)
 
-func (rows *Rows) ScanJoined(dist JoinedDist) error {
+func (rows *Rows) ScanJoined(dist interface{}, get JoinedGet) error {
 	v := reflect.ValueOf(dist).Elem()
 	t := v.Type()
 	if t.Kind() != reflect.Struct {
@@ -150,10 +148,14 @@ func (rows *Rows) ScanJoined(dist JoinedDist) error {
 	var ptrs []interface{}
 	for _, c := range columns {
 		if dT == nil {
-			d = dist.JoinIndex(dIdx)
+			var n int
+			d, n = get(dist, dIdx)
 			dV = reflect.ValueOf(d).Elem()
 			dT = mapper.TypeMap(reflect.TypeOf(d).Elem())
-			dN = len(dT.Names)
+			dN = n
+			if n < 0 {
+				dN = len(dT.Names)
+			}
 		}
 		fi, ok := dT.Names[c]
 		if !ok {
@@ -198,9 +200,9 @@ func (rows *Rows) _select(slicePtr interface{}) error {
 	return nil
 }
 
-func (rows *Rows) getJoined(dist JoinedDist) error {
+func (rows *Rows) getJoined(dist interface{}, joinedGet JoinedGet) error {
 	for rows.Next() {
-		err := rows.ScanJoined(dist)
+		err := rows.ScanJoined(dist, joinedGet)
 		if err != nil {
 			return err
 		}
@@ -209,25 +211,11 @@ func (rows *Rows) getJoined(dist JoinedDist) error {
 	return rows.Err()
 }
 
-func (rows *Rows) selectJoined(slicePtr interface{}) error {
+func (rows *Rows) selectJoined(slicePtr interface{}, joinedGet JoinedGet) error {
 	var err error
 	sliceV := reflect.ValueOf(slicePtr).Elem()
 	eleT := sliceV.Type().Elem()
-	isPtrSlice := false
-	if eleT.ConvertibleTo(joinedDistType) {
-		if eleT.Kind() != reflect.Ptr {
-			return ErrUnexpectedDistType
-		}
-		isPtrSlice = true
-	} else {
-		if eleT.Kind() != reflect.Struct {
-			return ErrUnexpectedDistType
-		}
-		elePT := reflect.New(eleT).Type()
-		if !elePT.ConvertibleTo(joinedDistType) {
-			return ErrUnexpectedDistType
-		}
-	}
+	isPtrSlice := eleT.Kind() == reflect.Ptr
 
 	for rows.Next() {
 		var eleV reflect.Value
@@ -245,7 +233,7 @@ func (rows *Rows) selectJoined(slicePtr interface{}) error {
 			}
 		}
 
-		err = rows.ScanJoined(eleV.Interface().(JoinedDist))
+		err = rows.ScanJoined(eleV.Interface(), joinedGet)
 		if err != nil {
 			return err
 		}

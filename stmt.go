@@ -64,18 +64,18 @@ func (stmt *Stmt) GetDirect(ctx context.Context, params interface{}, dist Direct
 	return stmt.Get(ctx, params, dist)
 }
 
-func (stmt *Stmt) GetJoined(ctx context.Context, params interface{}, dist JoinedDist) error {
+func (stmt *Stmt) GetJoined(ctx context.Context, params interface{}, dist interface{}, joinedGet JoinedGet) error {
 	rows, err := stmt.Rows(ctx, params)
 	if err != nil {
 		return err
 	}
-	return rows.getJoined(dist)
+	return rows.getJoined(dist, joinedGet)
 }
 
-func (stmt *Stmt) SelectJoined(ctx context.Context, params interface{}, ptrOfJoinedDistSlice interface{}) error {
+func (stmt *Stmt) SelectJoined(ctx context.Context, params interface{}, ptrOfJoinedDistSlice interface{}, joinedGet JoinedGet) error {
 	rows, err := stmt.Rows(ctx, params)
 	if err != nil {
 		return err
 	}
-	return rows.selectJoined(ptrOfJoinedDistSlice)
+	return rows.selectJoined(ptrOfJoinedDistSlice, joinedGet)
 }

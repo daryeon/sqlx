@@ -45,19 +45,6 @@ type Article struct {
 	Author   User   `db:"-"`
 }
 
-func (article *Article) JoinIndex(idx int) interface{} {
-	switch idx {
-	case 0:
-		return article
-	case 1:
-		return &article.Author
-	default:
-		return nil
-	}
-}
-
-var _ sqlx.JoinedDist = (*Article)(nil)
-
 func (article *Article) TableName() string { return "content_article" }
 
 func (article *Article) TableColumns() []string {
@@ -142,7 +129,23 @@ func selectArticleWithAuthor(ctx context.Context) {
 	defer tx.AutoCommit()
 
 	var result = make([]Article, 0, 100)
-	err := tx.SelectJoined(ctx, "select * from content_article as A, account_user as U where A.author=U.id order by A.title limit ${limit}", sqlx.ParamSlice{100}, &result)
+	err := tx.SelectJoined(
+		ctx,
+		"select * from content_article as A, account_user as U where A.author=U.id order by A.title limit ${limit}",
+		sqlx.ParamSlice{100},
+		&result,
+		func(raw interface{}, idx int) (interface{}, int) {
+			v := raw.(*Article)
+			switch idx {
+			case 0:
+				return v, -1
+			case 1:
+				return &v.Author, -1
+			default:
+				return nil, -1
+			}
+		},
+	)
 	if err != nil {
 		fmt.Println(err)
 		return
