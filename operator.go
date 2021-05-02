@@ -21,7 +21,6 @@ type Operator struct {
 	smap       *reflectx.StructMap
 	groups     map[string]map[string]int
 	immutables map[string]bool
-	db         *DB
 	model      Model
 }
 
@@ -34,14 +33,13 @@ func (op *Operator) addGroup(group, column string, ind int) {
 	gm[column] = ind
 }
 
-func NewOperator(db *DB, model Model) *Operator {
+func NewOperator(model Model) *Operator {
 	t := reflect.TypeOf(model)
 	if t.Kind() != reflect.Ptr || t.Elem().Kind() != reflect.Struct {
 		panic(fmt.Errorf("sqlx: model should be a struct pointer"))
 	}
 	op := &Operator{
 		smap:       mapper.TypeMap(t.Elem()),
-		db:         db,
 		model:      model,
 		groups:     map[string]map[string]int{},
 		immutables: map[string]bool{},
@@ -58,10 +56,9 @@ func NewOperator(db *DB, model Model) *Operator {
 			}
 			op.addGroup(gn, n, idx)
 		}
-		if len(f.Options["immutable"]) > 0 {
+		if _, ok := f.Options["immutable"]; ok {
 			op.immutables[n] = true
 		}
-
 		idx++
 	}
 	return op
@@ -99,14 +96,18 @@ func (op *Operator) IsImmutable(name string) bool {
 	return op.immutables[name]
 }
 
+var TableNamePrefix = ""
+
 func (op *Operator) CreateTable(ctx context.Context) error {
 	var buf strings.Builder
 	buf.WriteString("CREATE TABLE IF NOT EXISTS ")
+	buf.WriteString(TableNamePrefix)
 	buf.WriteString(op.model.TableName())
 	buf.WriteString(" (")
 	buf.WriteString(strings.Join(op.model.TableColumns(), ", "))
 	buf.WriteString(")")
-	_, e := op.db.Execute(ctx, buf.String(), nil)
+
+	_, e := wDB.Execute(ctx, buf.String(), nil)
 	return e
 }
 
@@ -247,7 +248,7 @@ func (op *Operator) SqlUpdate(condition string, columns []string, returning *Ret
 	return buf.String()
 }
 
-func (op *Operator) Update(ctx context.Context, condition string, data, params interface{}, returning *Returning) (int64, error) {
+func (op *Operator) Update(ctx context.Context, condition string, params, data interface{}, returning *Returning) (int64, error) {
 	pm, err := paramsToMap(params)
 	if err != nil {
 		return 0, err
