@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	_ "github.com/lib/pq"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/zzztttkkk/sqlx"
 	"log"
 	"math/rand"
@@ -14,7 +14,7 @@ var DB *sqlx.DB
 
 func init() {
 	var err error
-	DB, err = sqlx.OpenWriteableDB("postgres", "user=postgres password=123456 database=testing")
+	DB, err = sqlx.OpenWriteableDB("mysql", "root:123456@/testing")
 	if err != nil {
 		panic(err)
 	}
@@ -30,7 +30,7 @@ func (user *User) TableName() string { return "account_user" }
 
 func (user *User) TableColumns() []string {
 	return []string{
-		"id serial8 not null primary key",
+		"id bigint not null auto_increment primary key",
 		"name char(20) not null unique",
 	}
 }
@@ -62,7 +62,7 @@ func (article *Article) TableName() string { return "content_article" }
 
 func (article *Article) TableColumns() []string {
 	return []string{
-		"id serial8 not null primary key",
+		"id bigint auto_increment not null primary key",
 		"title char(50) not null",
 		"content text not null",
 		"author bigint not null",
@@ -154,7 +154,7 @@ func selectArticleWithAuthor(ctx context.Context) {
 }
 
 func main() {
-	//createUser(context.Background())
-	//createArticle(context.Background())
+	createUser(context.Background())
+	createArticle(context.Background())
 	selectArticleWithAuthor(context.Background())
 }

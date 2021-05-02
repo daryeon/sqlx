@@ -126,7 +126,7 @@ func (rows *Rows) selectToValueSlice(sliceV reflect.Value, et reflect.Type) (*re
 }
 
 type JoinedDist interface {
-	JoinIndex(int) interface{}
+	JoinIndex(idx int) interface{}
 }
 
 func (rows *Rows) ScanJoined(dist JoinedDist) error {
