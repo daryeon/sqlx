@@ -6,11 +6,32 @@ import (
 )
 
 type Params map[string]interface{}
+type ParamSlice []interface{}
+
+func (p Params) Keys() []string {
+	if p == nil {
+		return nil
+	}
+	if len(p) < 1 {
+		return nil
+	}
+	lst := make([]string, len(p))
+	for k := range p {
+		lst = append(lst, k)
+	}
+	return lst
+}
 
 var paramsType = reflect.TypeOf(Params{})
 var mapType = reflect.TypeOf(map[string]interface{}{})
+var paramSliceType = reflect.TypeOf(ParamSlice{})
+var sliceType = reflect.TypeOf([]interface{}{})
 
 func paramsToMap(params interface{}) (Params, error) {
+	if params == nil {
+		return nil, nil
+	}
+
 	t := reflect.TypeOf(params)
 	if t == paramsType {
 		return params.(Params), nil
@@ -35,9 +56,14 @@ func paramsToMap(params interface{}) (Params, error) {
 	return m, nil
 }
 
-func paramsToArgs(params interface{}, keys []string) ([]interface{}, error) {
+func ParamsToArgs(params interface{}, keys []string) ([]interface{}, error) {
+	if len(keys) < 1 {
+		return nil, nil
+	}
+
 	t := reflect.TypeOf(params)
-	if t == paramsType {
+	switch t {
+	case paramsType:
 		var args []interface{}
 		m := params.(Params)
 		for _, k := range keys {
@@ -48,9 +74,7 @@ func paramsToArgs(params interface{}, keys []string) ([]interface{}, error) {
 			args = append(args, v)
 		}
 		return args, nil
-	}
-
-	if t == mapType {
+	case mapType:
 		var args []interface{}
 		m := params.(map[string]interface{})
 		for _, k := range keys {
@@ -61,6 +85,10 @@ func paramsToArgs(params interface{}, keys []string) ([]interface{}, error) {
 			args = append(args, v)
 		}
 		return args, nil
+	case sliceType:
+		return params.([]interface{}), nil
+	case paramSliceType:
+		return params.(ParamSlice), nil
 	}
 
 	if t.Kind() != reflect.Struct {

@@ -1,7 +1,6 @@
 package sqlx
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -68,7 +67,7 @@ func scanParams(q []rune) []_Param {
 	return lst
 }
 
-func bindParams(d DriverType, qs string) (string, []string) {
+func BindParams(d DriverType, qs string) (string, []string) {
 	if !strings.Contains(qs, "${") {
 		return qs, nil
 	}
@@ -79,15 +78,7 @@ func bindParams(d DriverType, qs string) (string, []string) {
 		return qs, nil
 	}
 
-	var placeholder func(int) string
-	switch d {
-	case DriverTypeMysql:
-		placeholder = mysqlPlaceholder
-	case DriverTypePostgres:
-		placeholder = postgresPlaceholder
-	default:
-		panic(fmt.Errorf("sqlx: unknown driver type `%d`", d))
-	}
+	var placeholder = d.PlaceholderFunc()
 
 	var buf strings.Builder
 	var keys []string
@@ -98,7 +89,7 @@ func bindParams(d DriverType, qs string) (string, []string) {
 			cur++
 		}
 
-		buf.WriteString(placeholder(idx))
+		buf.WriteString(placeholder(idx, param.name))
 		keys = append(keys, param.name)
 		cur = param.end + 1
 	}

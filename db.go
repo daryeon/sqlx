@@ -3,28 +3,31 @@ package sqlx
 import (
 	"context"
 	"database/sql"
-	"log"
 )
+
+type Logger interface {
+	Printf(fmt string, args ...interface{})
+}
 
 type DB struct {
 	std        *sql.DB
 	driverType DriverType
-	logger     *log.Logger
+	logger     Logger
 }
 
 func (db *DB) Raw() *sql.DB { return db.std }
 
-func (db *DB) SetLogger(v *log.Logger) { db.logger = v }
+func (db *DB) SetLogger(v Logger) { db.logger = v }
 
 func (db *DB) BindParams(query string, params interface{}) (string, []interface{}, error) {
-	q, keys := bindParams(db.driverType, query)
-	args, err := paramsToArgs(params, keys)
+	q, keys := BindParams(db.driverType, query)
+	args, err := ParamsToArgs(params, keys)
 	if err != nil {
 		return "", nil, err
 	}
 
 	if db.logger != nil {
-		db.logger.Printf("sqlx: %s, %v", q, args)
+		db.logger.Printf("%s, %v", q, args)
 	}
 	return q, args, nil
 }
@@ -74,6 +77,9 @@ func (db *DB) BeginTx(ctx context.Context, opt *sql.TxOptions) (*Tx, error) {
 	if err != nil {
 		return nil, err
 	}
+	if db.logger != nil {
+		db.logger.Printf("tx begin, sql.Tx(%p);", tx)
+	}
 	return &Tx{std: tx, db: db, ctx: ctx}, nil
 }
 
@@ -85,6 +91,22 @@ func (db *DB) MustBeginTx(ctx context.Context, opt *sql.TxOptions) *Tx {
 	return t
 }
 
+func (db *DB) Prepare(ctx context.Context, query string) (*Stmt, error) {
+	query, keys := BindParams(db.driverType, query)
+	stmt, err := db.std.PrepareContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	if db.logger != nil {
+		db.logger.Printf("stmt prepared by db: %s, sql.Stmt(%p)", query, stmt)
+	}
+	return &Stmt{
+		std:    stmt,
+		keys:   keys,
+		logger: db.logger,
+	}, nil
+}
+
 var _ Executor = (*DB)(nil)
 
 func Open(driverName string, dsn string) (*DB, error) {
@@ -92,12 +114,13 @@ func Open(driverName string, dsn string) (*DB, error) {
 	if e != nil {
 		return nil, e
 	}
-	var dt DriverType
-	switch driverName {
-	case "mysql":
-		dt = DriverTypeMysql
-	case "postgres":
-		dt = DriverTypePostgres
+	return &DB{std: db, driverType: nameToDriverType(driverName)}, nil
+}
+
+func MustOpen(driverName string, dsn string) *DB {
+	v, e := Open(driverName, dsn)
+	if e != nil {
+		panic(e)
 	}
-	return &DB{std: db, driverType: dt}, nil
+	return v
 }

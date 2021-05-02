@@ -25,11 +25,13 @@ func isMapType(t reflect.Type) bool {
 }
 
 func (rows *Rows) Scan(dist interface{}) error {
+	dt := reflect.TypeOf(dist)
+	if dt == distsType {
+		return rows.Rows.Scan(dist.(DirectDists)...)
+	}
+
 	v := reflect.ValueOf(dist).Elem()
 	t := v.Type()
-	if t.Kind() == reflect.Struct {
-		return rows.scanStruct(&v)
-	}
 	if t == distsType {
 		return rows.Rows.Scan(dist.(DirectDists)...)
 	}
@@ -166,4 +168,96 @@ func (rows *Rows) ScanJoined(dist JoinedDist) error {
 		}
 	}
 	return rows.Rows.Scan(ptrs...)
+}
+
+func (rows *Rows) get(dist interface{}) error {
+	for rows.Next() {
+		err := rows.Scan(dist)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	return rows.Err()
+}
+
+func (rows *Rows) _select(slicePtr interface{}) error {
+	var err error
+	sliceV := reflect.ValueOf(slicePtr).Elem()
+	eleT := sliceV.Type().Elem()
+	var vPtr *reflect.Value
+	if eleT.Kind() == reflect.Ptr {
+		vPtr, err = rows.selectToPointerSlice(sliceV, eleT)
+	} else {
+		vPtr, err = rows.selectToValueSlice(sliceV, eleT)
+	}
+	if err != nil {
+		return err
+	}
+	sliceV.Set(*vPtr)
+	return nil
+}
+
+func (rows *Rows) getJoined(dist JoinedDist) error {
+	for rows.Next() {
+		err := rows.ScanJoined(dist)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	return rows.Err()
+}
+
+func (rows *Rows) selectJoined(slicePtr interface{}) error {
+	var err error
+	sliceV := reflect.ValueOf(slicePtr).Elem()
+	eleT := sliceV.Type().Elem()
+	isPtrSlice := false
+	if eleT.ConvertibleTo(joinedDistType) {
+		if eleT.Kind() != reflect.Ptr {
+			return ErrUnexpectedDistType
+		}
+		isPtrSlice = true
+	} else {
+		if eleT.Kind() != reflect.Struct {
+			return ErrUnexpectedDistType
+		}
+		elePT := reflect.New(eleT).Type()
+		if !elePT.ConvertibleTo(joinedDistType) {
+			return ErrUnexpectedDistType
+		}
+	}
+
+	for rows.Next() {
+		var eleV reflect.Value
+		doAppend := true
+		if isPtrSlice {
+			eleV = reflect.New(eleT.Elem())
+		} else {
+			l := sliceV.Len() + 1
+			if l < sliceV.Cap() {
+				doAppend = false
+				sliceV.SetLen(l)
+				eleV = sliceV.Index(l - 1).Addr()
+			} else {
+				eleV = reflect.New(eleT)
+			}
+		}
+
+		err = rows.ScanJoined(eleV.Interface().(JoinedDist))
+		if err != nil {
+			return err
+		}
+
+		if doAppend {
+			if isPtrSlice {
+				sliceV = reflect.Append(sliceV, eleV)
+			} else {
+				sliceV = reflect.Append(sliceV, eleV.Elem())
+			}
+		}
+	}
+	reflect.ValueOf(slicePtr).Elem().Set(sliceV)
+	return rows.Err()
 }

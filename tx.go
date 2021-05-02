@@ -61,9 +61,37 @@ func (tx *Tx) SelectJoined(ctx context.Context, query string, params interface{}
 	return selectJoined(ctx, tx, query, params, dist)
 }
 
+func (tx *Tx) Prepare(ctx context.Context, query string) (*Stmt, error) {
+	query, keys := BindParams(tx.db.driverType, query)
+	stmt, err := tx.std.PrepareContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	if tx.db.logger != nil {
+		tx.db.logger.Printf("stmt prepared by tx: %s, sql.Stmt(%p), sql.Tx(%p)", query, stmt, tx.std)
+	}
+	return &Stmt{
+		std:    stmt,
+		keys:   keys,
+		logger: tx.db.logger,
+	}, nil
+}
+
+func (tx *Tx) Stmt(stmt *Stmt) *Stmt {
+	v := tx.std.Stmt(stmt.std)
+	if tx.db.logger != nil {
+		tx.db.logger.Printf("tx wrap stmt: (%p)=>(%p), sql.Tx(%p)", stmt, v, tx.std)
+	}
+	return &Stmt{std: v, keys: stmt.keys, logger: stmt.logger}
+}
+
 var _ Executor = (*Tx)(nil)
 
 func (tx *Tx) BeginTx(ctx context.Context, savepoint string) (*Tx, error) {
+	if tx.db.logger != nil {
+		tx.db.logger.Printf("tx begin via savepoint, `%s`, sql.Tx(%p);", savepoint, tx.std)
+	}
+
 	_, err := tx.Execute(ctx, fmt.Sprintf("SAVEPOINT %s_BEGIN", savepoint), nil)
 	if err != nil {
 		return nil, err
@@ -81,7 +109,13 @@ func (tx *Tx) MustBeginTx(ctx context.Context, savepoint string) *Tx {
 
 func (tx *Tx) Commit() error {
 	if len(tx.savepoint) < 1 {
+		if tx.db.logger != nil {
+			tx.db.logger.Printf("tx commit, sql.Tx(%p);", tx.std)
+		}
 		return tx.std.Commit()
+	}
+	if tx.db.logger != nil {
+		tx.db.logger.Printf("tx commit via savepoint, `%s`, sql.Tx(%p);", tx.savepoint, tx.std)
 	}
 	_, err := tx.Execute(tx.ctx, fmt.Sprintf("SAVEPOINT %s", tx.savepoint), nil)
 	if err != nil {
@@ -93,7 +127,13 @@ func (tx *Tx) Commit() error {
 
 func (tx *Tx) Rollback() error {
 	if len(tx.savepoint) < 1 {
+		if tx.db.logger != nil {
+			tx.db.logger.Printf("tx rollback, sql.Tx(%p);", tx.std)
+		}
 		return tx.std.Rollback()
+	}
+	if tx.db.logger != nil {
+		tx.db.logger.Printf("tx rollback via savepoint, `%s`, sql.Tx(%p);", tx.savepoint, tx.std)
 	}
 	_, err := tx.Execute(tx.ctx, fmt.Sprintf("ROLLBACK TO SAVEPOINT %s_BEGIN", tx.savepoint), nil)
 	return err
@@ -110,7 +150,7 @@ type AutoCommitError struct {
 }
 
 func (ace *AutoCommitError) Error() string {
-	return fmt.Sprintf("sqlx: auto commit error, recovers(%v), sql error(%s)", ace.Recoverd, ace.SqlError.Error())
+	return fmt.Sprintf("sqlx: auto commit error, recovers(%v), sql error(%v)", ace.Recoverd, ace.SqlError)
 }
 
 func (tx *Tx) AutoCommit() {
@@ -125,8 +165,4 @@ func (tx *Tx) AutoCommit() {
 		e = tx.Rollback()
 	}
 	panic(&AutoCommitError{Recoverd: v, SqlError: e})
-}
-
-func (tx *Tx) Prepare(ctx context.Context, sql string) (*sql.Stmt, error) {
-	return tx.std.PrepareContext(ctx, sql)
 }
