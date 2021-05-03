@@ -3,6 +3,7 @@ package sqlx
 import (
 	"context"
 	"database/sql"
+	"errors"
 )
 
 type Logger interface {
@@ -10,6 +11,7 @@ type Logger interface {
 }
 
 type DB struct {
+	readonly   bool
 	std        *sql.DB
 	driverType DriverType
 	logger     Logger
@@ -72,7 +74,17 @@ func (db *DB) SelectJoined(ctx context.Context, query string, params interface{}
 	return selectJoined(ctx, db, query, params, dist, joinedGet)
 }
 
+var ErrReadonly = errors.New("sqlx: readonly")
+
 func (db *DB) BeginTx(ctx context.Context, opt *sql.TxOptions) (*Tx, error) {
+	var readonly = false
+	if opt != nil {
+		readonly = opt.ReadOnly
+	}
+	if db.readonly && !readonly {
+		return nil, ErrReadonly
+	}
+
 	tx, err := db.std.BeginTx(ctx, opt)
 	if err != nil {
 		return nil, err
@@ -80,7 +92,7 @@ func (db *DB) BeginTx(ctx context.Context, opt *sql.TxOptions) (*Tx, error) {
 	if db.logger != nil {
 		db.logger.Printf("tx begin, sql.Tx(%p);", tx)
 	}
-	return &Tx{std: tx, db: db, ctx: ctx}, nil
+	return &Tx{std: tx, db: db, ctx: ctx, readonly: readonly}, nil
 }
 
 func (db *DB) MustBeginTx(ctx context.Context, opt *sql.TxOptions) *Tx {

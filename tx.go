@@ -11,6 +11,7 @@ type Tx struct {
 	db        *DB
 	savepoint string
 	ctx       context.Context
+	readonly  bool
 }
 
 func (tx *Tx) Raw() *sql.Tx { return tx.std }
@@ -88,6 +89,9 @@ func (tx *Tx) Stmt(stmt *Stmt) *Stmt {
 var _ Executor = (*Tx)(nil)
 
 func (tx *Tx) BeginTx(ctx context.Context, savepoint string) (*Tx, error) {
+	if tx.readonly {
+		return nil, ErrReadonly
+	}
 	if tx.db.logger != nil {
 		tx.db.logger.Printf("tx begin via savepoint, `%s`, sql.Tx(%p);", savepoint, tx.std)
 	}

@@ -27,12 +27,20 @@ func OpenWriteableDB(driverName string, dsn string) (*DB, error) {
 func OpenReadonlyDB(driverName string, dsn string) (*DB, error) {
 	v, e := Open(driverName, dsn)
 	if e == nil {
+		v.readonly = true
 		rDBs = append(rDBs, v)
 	}
 	return v, e
 }
 
 var PickReadonlyDB func([]*DB) *DB
+
+func getRDB() *DB {
+	if len(rDBs) > 0 {
+		return PickReadonlyDB(rDBs)
+	}
+	return wDB
+}
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
@@ -43,52 +51,62 @@ func JustWriteableDB(ctx context.Context) context.Context {
 	return context.WithValue(ctx, _KeyJustWDB, true)
 }
 
-func PickExecutor(ctx context.Context) (context.Context, Executor) {
+func getExe(ctx context.Context) Executor {
 	txi := ctx.Value(_KeyTx)
 	if txi != nil {
-		return ctx, txi.(*Tx)
+		return txi.(*Tx)
 	}
-
 	dbi := ctx.Value(_KeyDB)
 	if dbi != nil {
-		return ctx, dbi.(*DB)
+		return dbi.(*DB)
+	}
+	return nil
+}
+
+func PickExecutor(ctx context.Context) (context.Context, Executor) {
+	exe := getExe(ctx)
+	if exe != nil {
+		return ctx, exe
 	}
 
 	var db *DB
 	if ctx.Value(_KeyJustWDB) != nil {
 		db = wDB
 	} else {
-		if len(rDBs) > 0 {
-			db = PickReadonlyDB(rDBs)
-		} else {
-			db = wDB
-		}
+		db = getRDB()
 	}
 	return context.WithValue(ctx, _KeyDB, db), db
 }
 
 type TxOptions struct {
 	sql.TxOptions
-	Savepoint string
+	Savepoint      string
+	JustWritableDB bool
 }
 
-func BeginTx(ctx context.Context, options *TxOptions) (context.Context, *Tx) {
-	ctx, exe := PickExecutor(ctx)
-	var tx *Tx
-	switch tv := exe.(type) {
-	case *Tx:
-		tx = tv.MustBeginTx(ctx, options.Savepoint)
-	default:
-		var opt *sql.TxOptions
-		if options != nil {
-			opt = &options.TxOptions
+func MustBegin(ctx context.Context, options *TxOptions) (context.Context, *Tx) {
+	exe := getExe(ctx)
+	var rTx *Tx
+	if exe != nil { // options can not be nil
+		tx, ok := exe.(*Tx)
+		if ok {
+			rTx = tx.MustBeginTx(ctx, options.Savepoint)
 		}
-		ctx = context.WithValue(ctx, _KeyDB, wDB)
-		tx = wDB.MustBeginTx(ctx, opt)
 	}
-	return context.WithValue(ctx, _KeyTx, tx), tx
+	if rTx == nil { // options can be nil
+		if options != nil {
+			var db = wDB
+			if options.ReadOnly && !options.JustWritableDB {
+				db = getRDB()
+			}
+			rTx = db.MustBeginTx(ctx, &options.TxOptions)
+		} else {
+			rTx = wDB.MustBeginTx(ctx, nil)
+		}
+	}
+	return context.WithValue(ctx, _KeyTx, rTx), rTx
 }
-
-func WithTx(ctx context.Context, tx *Tx) context.Context { return context.WithValue(ctx, _KeyTx, tx) }
 
 func WithDB(ctx context.Context, db *DB) context.Context { return context.WithValue(ctx, _KeyDB, db) }
+
+func WithTx(ctx context.Context, tx *Tx) context.Context { return context.WithValue(ctx, _KeyTx, tx) }

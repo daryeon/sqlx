@@ -59,8 +59,8 @@ func (article *Article) TableColumns() []string {
 var ArticleOperator *sqlx.Operator
 
 func init() {
-	UserOperator = sqlx.NewOperator(DB, &User{})
-	ArticleOperator = sqlx.NewOperator(DB, &Article{})
+	UserOperator = sqlx.NewOperator(&User{})
+	ArticleOperator = sqlx.NewOperator(&Article{})
 
 	UserOperator.CreateTable(context.Background())
 	ArticleOperator.CreateTable(context.Background())
@@ -77,7 +77,7 @@ func randChinese(size int) string {
 }
 
 func createUser(ctx context.Context) {
-	ctx, tx := sqlx.BeginTx(ctx, nil)
+	ctx, tx := sqlx.MustBegin(ctx, nil)
 	defer tx.AutoCommit()
 
 	stmt, err := tx.Prepare(ctx, UserOperator.SqlInsert(sqlx.Columns{"name"}, nil))
@@ -97,7 +97,7 @@ func createUser(ctx context.Context) {
 }
 
 func createArticle(ctx context.Context) {
-	ctx, tx := sqlx.BeginTx(ctx, nil)
+	ctx, tx := sqlx.MustBegin(ctx, nil)
 	defer tx.AutoCommit()
 
 	stmt, err := tx.Prepare(
@@ -125,7 +125,7 @@ func createArticle(ctx context.Context) {
 }
 
 func selectArticleWithAuthor(ctx context.Context) {
-	ctx, tx := sqlx.BeginTx(ctx, nil)
+	ctx, tx := sqlx.MustBegin(ctx, nil)
 	defer tx.AutoCommit()
 
 	var result = make([]Article, 0, 100)
